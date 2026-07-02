@@ -3,6 +3,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { eventoService, EVENTOS_QUERY_KEY, eventosQueryKey } from "@/services/eventoService";
 import { animalService, ANIMALS_QUERY_KEY } from "@/services/animalService";
 import { inventarioIAService, INVENTARIO_IA_QUERY_KEY } from "@/services/inventarioIAService";
+import {
+  inventarioMedicinaService,
+  INVENTARIO_MEDICINA_QUERY_KEY,
+} from "@/services/inventarioMedicinaService";
 import { formatDate } from "@/lib/utils";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -34,6 +38,7 @@ export default function Eventos() {
     requiere_retiro_leche: false, dias_retiro: "",
     sexo_cria: "Hembra", nombre_cria: "", peso_cria: "",
     resultado: "", grupo_nuevo: "", inventario_ia_id: "",
+    inventario_medicina_id: "", medicina_cantidad_usada: "",
   });
   const set = (f, v) => setForm(p => ({ ...p, [f]: v }));
   const { data: fincaData } = useQuery({
@@ -61,16 +66,59 @@ export default function Eventos() {
     queryFn: () => inventarioIAService.list({ disponibles: true }),
   });
 
+  const { data: inventarioMedicinas = [] } = useQuery({
+    queryKey: [...INVENTARIO_MEDICINA_QUERY_KEY, "activos"],
+    enabled: !!fincaId,
+    queryFn: () => inventarioMedicinaService.list({ activos: true }),
+  });
+
   const animalSeleccionado = animales.find(a => a.nombre === form.animal_nombre);
   const pajuelasDisponibles = inventarioIA.filter((item) => Number(item.stock_actual || 0) > 0);
   const pajuelaSeleccionada = pajuelasDisponibles.find(
     (item) => String(item.id) === String(form.inventario_ia_id)
   );
+  const medicinasActivas = inventarioMedicinas.filter((item) => item.activo !== false);
+  const medicinaSeleccionada = medicinasActivas.find(
+    (item) => String(item.id) === String(form.inventario_medicina_id)
+  );
+  const cantidadMedicinaUsada = form.medicina_cantidad_usada === "" && medicinaSeleccionada
+    ? 1
+    : Number(form.medicina_cantidad_usada || 0);
+
+  const handleMedicinaChange = (value) => {
+    const item = medicinasActivas.find((medicina) => String(medicina.id) === String(value));
+
+    setForm((previous) => ({
+      ...previous,
+      inventario_medicina_id: value === "__ninguna__" ? "" : value,
+      medicamento: item?.nombre || previous.medicamento,
+      medicina_cantidad_usada: item && previous.medicina_cantidad_usada === "" ? "1" : previous.medicina_cantidad_usada,
+    }));
+  };
 
   const handleSave = async () => {
     if (form.tipo === "Inseminacion" && !pajuelaSeleccionada) {
       toast.error("Seleccioná una pajuela disponible");
       return;
+    }
+
+    if ((form.tipo === "Tratamiento" || form.tipo === "Vacuna") && medicinaSeleccionada) {
+      const stockDisponible = Number(medicinaSeleccionada.stock_actual || 0);
+
+      if (!animalSeleccionado) {
+        toast.error("Para consumir inventario, seleccioná un animal.");
+        return;
+      }
+
+      if (cantidadMedicinaUsada <= 0) {
+        toast.error("Ingresá una cantidad utilizada mayor a 0");
+        return;
+      }
+
+      if (cantidadMedicinaUsada > stockDisponible) {
+        toast.error(`Stock insuficiente. Disponible: ${stockDisponible}`);
+        return;
+      }
     }
 
     setLoading(true);
@@ -90,6 +138,12 @@ export default function Eventos() {
       veterinario: form.veterinario || null,
       medicamento: form.medicamento || null,
       dosis: form.dosis || null,
+      inventario_medicina_id: (form.tipo === "Tratamiento" || form.tipo === "Vacuna") && medicinaSeleccionada ? medicinaSeleccionada.id : null,
+      medicina_nombre: (form.tipo === "Tratamiento" || form.tipo === "Vacuna") && medicinaSeleccionada ? medicinaSeleccionada.nombre : null,
+      medicina_tipo: (form.tipo === "Tratamiento" || form.tipo === "Vacuna") && medicinaSeleccionada ? medicinaSeleccionada.tipo : null,
+      medicina_lote: (form.tipo === "Tratamiento" || form.tipo === "Vacuna") && medicinaSeleccionada ? medicinaSeleccionada.lote : null,
+      medicina_unidad_medida: (form.tipo === "Tratamiento" || form.tipo === "Vacuna") && medicinaSeleccionada ? medicinaSeleccionada.unidad_medida : null,
+      medicina_cantidad_usada: (form.tipo === "Tratamiento" || form.tipo === "Vacuna") && medicinaSeleccionada ? cantidadMedicinaUsada : null,
       sexo_cria: form.tipo === "Parto" ? form.sexo_cria : null,
       nombre_cria: form.tipo === "Parto" ? form.nombre_cria : null,
       peso_cria: form.tipo === "Parto" && form.peso_cria ? Number(form.peso_cria) : null,
@@ -108,6 +162,7 @@ export default function Eventos() {
       queryClient.invalidateQueries({ queryKey: EVENTOS_QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: ANIMALS_QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: INVENTARIO_IA_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: INVENTARIO_MEDICINA_QUERY_KEY });
       setTimeout(() => setSuccess(false), 2000);
     } catch (error) {
       toast.error(error.message || "Error al registrar el evento");
@@ -268,14 +323,58 @@ export default function Eventos() {
         )}
 
         {(form.tipo === "Tratamiento" || form.tipo === "Vacuna") && (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-3">
             <div>
-              <Label className="text-xs font-semibold mb-1.5 block">Medicamento / Vacuna</Label>
-              <Input value={form.medicamento} onChange={e => set("medicamento", e.target.value)} placeholder="Ej: Ivermectina" />
+              <Label className="text-xs font-semibold mb-1.5 block">Producto de inventario</Label>
+              <Select
+                value={form.inventario_medicina_id || "__ninguna__"}
+                onValueChange={handleMedicinaChange}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar medicina o vacuna" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__ninguna__">Sin producto de inventario</SelectItem>
+                  {medicinasActivas.map((item) => (
+                    <SelectItem key={item.id} value={String(item.id)}>
+                      {item.nombre} · {item.tipo} · Stock {item.stock_actual ?? 0} {item.unidad_medida || ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {medicinaSeleccionada && (
+                <div className="mt-3 rounded-lg border border-border bg-muted/30 p-3 text-xs space-y-1">
+                  <p><span className="font-semibold">Stock disponible:</span> {medicinaSeleccionada.stock_actual ?? 0} {medicinaSeleccionada.unidad_medida || ""}</p>
+                  <p><span className="font-semibold">Tipo:</span> {medicinaSeleccionada.tipo}</p>
+                  {medicinaSeleccionada.lote && <p><span className="font-semibold">Lote:</span> {medicinaSeleccionada.lote}</p>}
+                </div>
+              )}
             </div>
-            <div>
-              <Label className="text-xs font-semibold mb-1.5 block">Dosis</Label>
-              <Input value={form.dosis} onChange={e => set("dosis", e.target.value)} placeholder="5ml" />
+
+            {medicinaSeleccionada && (
+              <div>
+                <Label className="text-xs font-semibold mb-1.5 block">Cantidad utilizada</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.medicina_cantidad_usada}
+                  onChange={e => set("medicina_cantidad_usada", e.target.value)}
+                  placeholder="1"
+                />
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-semibold mb-1.5 block">Medicamento / Vacuna</Label>
+                <Input value={form.medicamento} onChange={e => set("medicamento", e.target.value)} placeholder="Ej: Ivermectina" />
+              </div>
+              <div>
+                <Label className="text-xs font-semibold mb-1.5 block">Dosis</Label>
+                <Input value={form.dosis} onChange={e => set("dosis", e.target.value)} placeholder="5ml" />
+              </div>
             </div>
           </div>
         )}

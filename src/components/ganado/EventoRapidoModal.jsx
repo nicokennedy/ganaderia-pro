@@ -2,6 +2,10 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { eventoService, EVENTOS_QUERY_KEY } from "@/services/eventoService";
 import { inventarioIAService, INVENTARIO_IA_QUERY_KEY } from "@/services/inventarioIAService";
+import {
+  inventarioMedicinaService,
+  INVENTARIO_MEDICINA_QUERY_KEY,
+} from "@/services/inventarioMedicinaService";
 import { ANIMALS_QUERY_KEY } from "@/services/animalService";
 import { getCurrentFinca } from "@/lib/current-finca";
 import { Button } from "@/components/ui/button";
@@ -27,6 +31,8 @@ export default function EventoRapidoModal({ animal, onClose, onSave }) {
   const [form, setForm] = useState({
     fecha: new Date().toISOString().split("T")[0],
     inventario_ia_id: "",
+    inventario_medicina_id: "",
+    medicina_cantidad_usada: "",
     agregar_cria: false,
     sexo_cria: "Hembra",
     nombre_cria: "",
@@ -83,6 +89,12 @@ export default function EventoRapidoModal({ animal, onClose, onSave }) {
     queryFn: () => inventarioIAService.list({ disponibles: true }),
   });
 
+  const { data: inventarioMedicinas = [] } = useQuery({
+    queryKey: [...INVENTARIO_MEDICINA_QUERY_KEY, "activos"],
+    enabled: !!fincaId,
+    queryFn: () => inventarioMedicinaService.list({ activos: true }),
+  });
+
   const pajuelasDisponibles = inventarioIA.filter(
     (item) => Number(item.stock_actual || 0) > 0
   );
@@ -92,6 +104,25 @@ export default function EventoRapidoModal({ animal, onClose, onSave }) {
   const pajuelaSeleccionada = pajuelasDisponibles.find(
     (item) => String(item.id) === String(form.inventario_ia_id)
   );
+
+  const medicinasActivas = inventarioMedicinas.filter((item) => item.activo !== false);
+  const medicinaSeleccionada = medicinasActivas.find(
+    (item) => String(item.id) === String(form.inventario_medicina_id)
+  );
+  const cantidadMedicinaUsada = form.medicina_cantidad_usada === "" && medicinaSeleccionada
+    ? 1
+    : Number(form.medicina_cantidad_usada || 0);
+
+  const handleMedicinaChange = (value) => {
+    const item = medicinasActivas.find((medicina) => String(medicina.id) === String(value));
+
+    setForm((previous) => ({
+      ...previous,
+      inventario_medicina_id: value === "__ninguna__" ? "" : value,
+      medicamento: item?.nombre || previous.medicamento,
+      medicina_cantidad_usada: item && previous.medicina_cantidad_usada === "" ? "1" : previous.medicina_cantidad_usada,
+    }));
+  };
 
   const handleSave = async () => {
     const debeAgregarCria = accion === "parto" && form.agregar_cria === true;
@@ -108,6 +139,25 @@ export default function EventoRapidoModal({ animal, onClose, onSave }) {
     if (debeAgregarCria && !criaNombre && !form.cria_arete) {
       toast.error("Ingresá al menos nombre o arete de la cría");
       return;
+    }
+
+    if ((accion === "tratamiento" || accion === "vacuna") && medicinaSeleccionada) {
+      const stockDisponible = Number(medicinaSeleccionada.stock_actual || 0);
+
+      if (!animal?.id) {
+        toast.error("Para consumir inventario, seleccioná un animal.");
+        return;
+      }
+
+      if (cantidadMedicinaUsada <= 0) {
+        toast.error("Ingresá una cantidad utilizada mayor a 0");
+        return;
+      }
+
+      if (cantidadMedicinaUsada > stockDisponible) {
+        toast.error(`Stock insuficiente. Disponible: ${stockDisponible}`);
+        return;
+      }
     }
 
     setLoading(true);
@@ -167,6 +217,12 @@ export default function EventoRapidoModal({ animal, onClose, onSave }) {
         medicamento: form.medicamento || null,
         dosis: form.dosis || null,
         veterinario: form.veterinario || null,
+        inventario_medicina_id: medicinaSeleccionada?.id || null,
+        medicina_nombre: medicinaSeleccionada?.nombre || null,
+        medicina_tipo: medicinaSeleccionada?.tipo || null,
+        medicina_lote: medicinaSeleccionada?.lote || null,
+        medicina_unidad_medida: medicinaSeleccionada?.unidad_medida || null,
+        medicina_cantidad_usada: medicinaSeleccionada ? cantidadMedicinaUsada : null,
         requiere_retiro_leche: form.requiere_retiro_leche,
         dias_retiro: form.dias_retiro ? Number(form.dias_retiro) : 0,
       });
@@ -175,6 +231,12 @@ export default function EventoRapidoModal({ animal, onClose, onSave }) {
         tipo: "Vacuna",
         medicamento: form.medicamento || null,
         veterinario: form.veterinario || null,
+        inventario_medicina_id: medicinaSeleccionada?.id || null,
+        medicina_nombre: medicinaSeleccionada?.nombre || null,
+        medicina_tipo: medicinaSeleccionada?.tipo || null,
+        medicina_lote: medicinaSeleccionada?.lote || null,
+        medicina_unidad_medida: medicinaSeleccionada?.unidad_medida || null,
+        medicina_cantidad_usada: medicinaSeleccionada ? cantidadMedicinaUsada : null,
       });
     } else if (accion === "enfermedad") {
       Object.assign(eventoData, {
@@ -194,6 +256,7 @@ export default function EventoRapidoModal({ animal, onClose, onSave }) {
       queryClient.invalidateQueries({ queryKey: EVENTOS_QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: ANIMALS_QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: INVENTARIO_IA_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: INVENTARIO_MEDICINA_QUERY_KEY });
       toast.success(
         debeAgregarCria
           ? "Parto registrado y cría agregada al inventario"
@@ -526,27 +589,75 @@ export default function EventoRapidoModal({ animal, onClose, onSave }) {
           )}
 
           {(accion === "tratamiento" || accion === "vacuna") && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-3">
               <div>
                 <Label className="text-xs font-semibold mb-1.5 block">
-                  Medicamento / Vacuna
+                  Producto de inventario
                 </Label>
-                <Input
-                  value={form.medicamento}
-                  onChange={(e) => set("medicamento", e.target.value)}
-                  placeholder="Ej: Ivermectina"
-                />
+                <Select
+                  value={form.inventario_medicina_id || "__ninguna__"}
+                  onValueChange={handleMedicinaChange}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar medicina o vacuna" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__ninguna__">Sin producto de inventario</SelectItem>
+                    {medicinasActivas.map((item) => (
+                      <SelectItem key={item.id} value={String(item.id)}>
+                        {item.nombre} · {item.tipo} · Stock {item.stock_actual ?? 0} {item.unidad_medida || ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {medicinaSeleccionada && (
+                  <div className="mt-3 rounded-lg border border-border bg-muted/30 p-3 text-xs space-y-1">
+                    <p><span className="font-semibold">Stock disponible:</span> {medicinaSeleccionada.stock_actual ?? 0} {medicinaSeleccionada.unidad_medida || ""}</p>
+                    <p><span className="font-semibold">Tipo:</span> {medicinaSeleccionada.tipo}</p>
+                    {medicinaSeleccionada.lote && <p><span className="font-semibold">Lote:</span> {medicinaSeleccionada.lote}</p>}
+                  </div>
+                )}
               </div>
 
-              <div>
-                <Label className="text-xs font-semibold mb-1.5 block">
-                  Dosis
-                </Label>
-                <Input
-                  value={form.dosis}
-                  onChange={(e) => set("dosis", e.target.value)}
-                  placeholder="5ml"
-                />
+              {medicinaSeleccionada && (
+                <div>
+                  <Label className="text-xs font-semibold mb-1.5 block">
+                    Cantidad utilizada
+                  </Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.medicina_cantidad_usada}
+                    onChange={(e) => set("medicina_cantidad_usada", e.target.value)}
+                    placeholder="1"
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs font-semibold mb-1.5 block">
+                    Medicamento / Vacuna
+                  </Label>
+                  <Input
+                    value={form.medicamento}
+                    onChange={(e) => set("medicamento", e.target.value)}
+                    placeholder="Ej: Ivermectina"
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-xs font-semibold mb-1.5 block">
+                    Dosis
+                  </Label>
+                  <Input
+                    value={form.dosis}
+                    onChange={(e) => set("dosis", e.target.value)}
+                    placeholder="5ml"
+                  />
+                </div>
               </div>
             </div>
           )}

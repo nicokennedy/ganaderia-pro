@@ -8,7 +8,7 @@ export const EVENTOS_QUERY_KEY = ["eventos"];
 // con distinto limit/animal_id.
 export const eventosQueryKey = (params = {}) => ["eventos", params];
 
-const DECIMAL_FIELDS = ["valor_litros", "valor_usd", "peso_cria"];
+const DECIMAL_FIELDS = ["valor_litros", "valor_usd", "peso_cria", "medicina_cantidad_usada"];
 
 function toNum(value) {
   if (value === null || value === undefined || value === "") return value;

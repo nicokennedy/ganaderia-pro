@@ -551,6 +551,18 @@ const seleccionarAnimal = (animalSeleccionado) => {
                             Medicamento/Vacuna: {ev.medicamento}
                           </p>
                         )}
+                        {ev.medicina_nombre && (
+                          <p className="text-xs text-muted-foreground">
+                            Inventario: {ev.medicina_nombre}
+                            {ev.medicina_tipo ? ` · ${ev.medicina_tipo}` : ""}
+                            {ev.medicina_lote ? ` · Lote ${ev.medicina_lote}` : ""}
+                          </p>
+                        )}
+                        {ev.medicina_cantidad_usada != null && (
+                          <p className="text-xs text-muted-foreground">
+                            Cantidad usada: {ev.medicina_cantidad_usada} {ev.medicina_unidad_medida || ""}
+                          </p>
+                        )}
                         {ev.dosis && (
                           <p className="text-xs text-muted-foreground">Dosis: {ev.dosis}</p>
                         )}
@@ -625,6 +637,20 @@ const seleccionarAnimal = (animalSeleccionado) => {
 
                       {ev.medicamento && (
                         <p className="text-xs text-muted-foreground">Medicamento/Vacuna: {ev.medicamento}</p>
+                      )}
+
+                      {ev.medicina_nombre && (
+                        <p className="text-xs text-muted-foreground">
+                          Inventario: {ev.medicina_nombre}
+                          {ev.medicina_tipo ? ` · ${ev.medicina_tipo}` : ""}
+                          {ev.medicina_lote ? ` · Lote ${ev.medicina_lote}` : ""}
+                        </p>
+                      )}
+
+                      {ev.medicina_cantidad_usada != null && (
+                        <p className="text-xs text-muted-foreground">
+                          Cantidad usada: {ev.medicina_cantidad_usada} {ev.medicina_unidad_medida || ""}
+                        </p>
                       )}
 
                       {ev.dosis && (
