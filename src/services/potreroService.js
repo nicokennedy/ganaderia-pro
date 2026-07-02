@@ -2,7 +2,7 @@ import { apiClient } from "./apiClient";
 
 export const POTREROS_QUERY_KEY = ["potreros"];
 
-const DECIMAL_FIELDS = ["area", "hectareas", "capacidad_animales", "animales_actuales"];
+const DECIMAL_FIELDS = ["area", "hectareas", "superficie", "capacidad", "capacidad_animales", "capacidad_estimada", "animales_actuales"];
 
 function toNum(value) {
   if (value === null || value === undefined || value === "") return value;

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Calendar, ClipboardList, Dna, Milk, PackageSearch, Pill, Search, Users } from "lucide-react";
+import { Calendar, ClipboardList, Dna, MapPin, Milk, PackageSearch, Pill, Search, Users } from "lucide-react";
 import { ANIMALS_QUERY_KEY, animalService } from "@/services/animalService";
 import { EVENTOS_QUERY_KEY, eventoService } from "@/services/eventoService";
 import { INVENTARIO_IA_QUERY_KEY, inventarioIAService } from "@/services/inventarioIAService";
@@ -9,10 +9,12 @@ import {
   INVENTARIO_MEDICINA_QUERY_KEY,
   inventarioMedicinaService,
 } from "@/services/inventarioMedicinaService";
+import { POTREROS_QUERY_KEY, potreroService } from "@/services/potreroService";
 import { Input } from "@/components/ui/input";
 
 const SECTION_RESULTS = [
   { label: "Ganado", path: "/ganado", icon: Users, keywords: "animales vacas arete inventario ganado" },
+  { label: "Potreros", path: "/potreros", icon: MapPin, keywords: "potreros pastura verdeo corral superficie campo" },
   { label: "Eventos", path: "/eventos/nuevo", icon: ClipboardList, keywords: "eventos tratamiento vacuna diagnostico revision" },
   { label: "Registro Lechero", path: "/registro-leche", icon: Milk, keywords: "leche registro produccion ordeño am pm" },
   { label: "Inventario Medicinas", path: "/inventario-medicinas", icon: Pill, keywords: "medicina vacuna stock sanitario" },
@@ -72,6 +74,13 @@ export default function GlobalSearch() {
     staleTime: 60_000,
   });
 
+  const { data: potreros = [] } = useQuery({
+    queryKey: [...POTREROS_QUERY_KEY, "global-search"],
+    queryFn: potreroService.list,
+    enabled: open,
+    staleTime: 60_000,
+  });
+
   useEffect(() => {
     const handleClick = (event) => {
       if (!wrapperRef.current?.contains(event.target)) setOpen(false);
@@ -83,7 +92,7 @@ export default function GlobalSearch() {
 
   const groupedResults = useMemo(() => {
     if (!shouldSearch) {
-      return { animales: [], eventos: [], inventario: [], secciones: [] };
+      return { animales: [], eventos: [], potreros: [], inventario: [], secciones: [] };
     }
 
     const animalResults = animales
@@ -153,6 +162,27 @@ export default function GlobalSearch() {
         onSelect: () => navigate("/inventario-ia"),
       }));
 
+    const potreroResults = potreros
+      .filter((potrero) =>
+        matches(potrero.nombre, normalizedQuery) ||
+        matches(potrero.numero, normalizedQuery) ||
+        matches(potrero.codigo, normalizedQuery) ||
+        matches(potrero.tipo, normalizedQuery) ||
+        matches(potrero.estado, normalizedQuery)
+      )
+      .slice(0, 5)
+      .map((potrero) => ({
+        id: `potrero-${potrero.id}`,
+        title: potrero.nombre,
+        subtitle: [potrero.numero ? `Código ${potrero.numero}` : null, potrero.tipo, potrero.estado].filter(Boolean).join(" · "),
+        icon: MapPin,
+        onSelect: () => {
+          window.sessionStorage.setItem("globalSearchPotreroId", String(potrero.id));
+          window.dispatchEvent(new CustomEvent("open-potrero-detail", { detail: { potreroId: potrero.id } }));
+          navigate("/potreros");
+        },
+      }));
+
     const sectionResults = SECTION_RESULTS
       .filter((section) => matches(section.label, normalizedQuery) || matches(section.keywords, normalizedQuery))
       .slice(0, 5)
@@ -167,10 +197,11 @@ export default function GlobalSearch() {
     return {
       animales: animalResults,
       eventos: eventResults,
+      potreros: potreroResults,
       inventario: [...medicinaResults, ...iaResults].slice(0, 7),
       secciones: sectionResults,
     };
-  }, [animales, eventos, inventarioIA, medicinas, navigate, normalizedQuery, shouldSearch]);
+  }, [animales, eventos, inventarioIA, medicinas, navigate, normalizedQuery, potreros, shouldSearch]);
 
   const resultCount = Object.values(groupedResults).reduce((sum, group) => sum + group.length, 0);
 
@@ -204,6 +235,7 @@ export default function GlobalSearch() {
             <div className="py-2">
               <ResultGroup title="Animales" results={groupedResults.animales} onSelect={handleSelect} defaultIcon={Users} />
               <ResultGroup title="Eventos" results={groupedResults.eventos} onSelect={handleSelect} defaultIcon={ClipboardList} />
+              <ResultGroup title="Potreros" results={groupedResults.potreros} onSelect={handleSelect} defaultIcon={MapPin} />
               <ResultGroup title="Inventario" results={groupedResults.inventario} onSelect={handleSelect} defaultIcon={PackageSearch} />
               <ResultGroup title="Secciones" results={groupedResults.secciones} onSelect={handleSelect} defaultIcon={Search} />
             </div>
