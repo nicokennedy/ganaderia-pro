@@ -23,6 +23,7 @@ import Perfil from './pages/Perfil';
 import Eventos from './pages/Eventos';
 import RegistroLeche from './pages/RegistroLeche.jsx';
 import InventarioIA from './pages/InventarioIA.jsx';
+import InventarioMedicinas from './pages/InventarioMedicinas.jsx';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import VerifyOtp from './pages/VerifyOtp';
@@ -95,6 +96,7 @@ const AuthenticatedApp = () => {
         <Route path="/eventos/nuevo" element={<Eventos />} />
         <Route path="/registro-leche" element={<RegistroLeche />} />
         <Route path="/inventario-ia" element={<InventarioIA />} />
+        <Route path="/inventario-medicinas" element={<InventarioMedicinas />} />
         <Route
   path="/admin"
   element={

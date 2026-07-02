@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { 
   LayoutDashboard, MapPin, DollarSign, Calendar, 
-  BarChart2, Settings, User, Menu, ChevronRight, Milk, Shield, Syringe
+  BarChart2, Settings, User, Menu, ChevronRight, Milk, Shield, Syringe, Pill
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import CowIcon from "@/components/icons/CowIcon.jsx";
@@ -17,6 +17,7 @@ const navItems = [
   { path: "/reportes", icon: BarChart2, label: "Reportes" },
   { path: "/registro-leche", icon: Milk, label: "Reg. Lechero" },
   { path: "/inventario-ia", icon: Syringe, label: "Inventario IA" },
+  { path: "/inventario-medicinas", icon: Pill, label: "Medicinas" },
   { path: "/configuracion", icon: Settings, label: "Configuración" },
   { path: "/perfil", icon: User, label: "Perfil" },
 ];
