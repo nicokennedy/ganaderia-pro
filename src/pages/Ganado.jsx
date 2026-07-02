@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ANIMALS_QUERY_KEY, animalService } from "@/services/animalService";
 import { MILK_RECORDS_QUERY_KEY, milkRecordService } from "@/services/milkRecordService";
@@ -52,6 +52,26 @@ export default function Ganado() {
     queryKey: MILK_RECORDS_QUERY_KEY,
     queryFn: milkRecordService.list,
   });
+
+  useEffect(() => {
+    const openAnimal = (animalId) => {
+      const animal = animales.find((item) => String(item.id) === String(animalId));
+      if (animal) {
+        setAnimalDetalle(animal);
+        window.sessionStorage.removeItem("globalSearchAnimalId");
+      }
+    };
+
+    const pendingAnimalId = window.sessionStorage.getItem("globalSearchAnimalId");
+    if (pendingAnimalId) openAnimal(pendingAnimalId);
+
+    const handleGlobalSearchOpen = (event) => {
+      openAnimal(event.detail?.animalId);
+    };
+
+    window.addEventListener("open-animal-detail", handleGlobalSearchOpen);
+    return () => window.removeEventListener("open-animal-detail", handleGlobalSearchOpen);
+  }, [animales]);
 
   const registrosHoyPorAnimal = registrosLeche.reduce((acc, record) => {
     if (record.fecha === hoy) {

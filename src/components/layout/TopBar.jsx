@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import NotificationsDropdown from "@/components/layout/NotificationsDropdown";
+import GlobalSearch from "@/components/layout/GlobalSearch";
 
 export default function TopBar() {
   const today = new Date().toLocaleDateString('es-EC', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -10,14 +11,18 @@ export default function TopBar() {
 
   return (
     <header className="h-16 bg-card border-b border-border flex items-center justify-between px-4 md:px-6 sticky top-0 z-20">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 min-w-0">
         <div className="flex md:hidden items-center gap-2">
           <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center">
             <span className="text-xs">🐄</span>
           </div>
-          <span className="font-bold text-foreground text-base">GanaderíaPro</span>
+          <span className="font-bold text-foreground text-base hidden sm:inline">GanaderíaPro</span>
         </div>
         <p className="hidden md:block text-sm text-muted-foreground capitalize">{today}</p>
+      </div>
+
+      <div className="flex-1 px-3 md:px-6 min-w-0">
+        <GlobalSearch />
       </div>
 
       <div className="flex items-center gap-2">
