@@ -111,7 +111,7 @@ const seleccionarAnimal = (animalSeleccionado) => {
   }));
 
   const eventosOrdenados = [...eventos].sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
-  const eventosSalud = eventosOrdenados.filter(e => ["Enfermedad", "Tratamiento", "Vacuna", "Chequeo veterinario"].includes(e.tipo));
+  const eventosSalud = eventosOrdenados.filter(e => ["Enfermedad", "Tratamiento", "Vacuna", "Chequeo veterinario", "Diagnóstico", "Revisión", "Secado"].includes(e.tipo));
   const eventosRepro = eventosOrdenados.filter(e => ["Parto", "Inseminacion", "Celo", "Chequeo veterinario"].includes(e.tipo));
   const parseEventDate = (fecha) => {
     if (!fecha) return null;
@@ -165,6 +165,7 @@ const seleccionarAnimal = (animalSeleccionado) => {
   const TIPO_EMOJI = {
     Parto: "🐣", Inseminacion: "🧬", Celo: "💕", "Chequeo veterinario": "🩺",
     Tratamiento: "💊", Vacuna: "💉", Enfermedad: "🤒", "Cambio de grupo": "👥",
+    "Diagnóstico": "🩺", "Revisión": "🔎",
     Produccion: "🥛", Muerte: "💀", Venta: "💰", Destete: "🍼", Secado: "💤", Aborto: "⚠️", Otro: "📋"
   };
 

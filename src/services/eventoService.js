@@ -43,4 +43,11 @@ export const eventoService = {
     const item = await apiClient.post("/api/eventos", data);
     return normalizeEvento(item);
   },
+  async bulkCreate(data) {
+    const result = await apiClient.post("/api/eventos/bulk_create", data);
+    return {
+      ...result,
+      eventos: normalizeEventos(result?.eventos),
+    };
+  },
 };
