@@ -129,6 +129,7 @@ export default function RegistroLeche() {
 
       await milkRecordService.bulkUpsert(records);
       await refetchRegistros();
+      await queryClient.invalidateQueries({ queryKey: MILK_RECORDS_QUERY_KEY });
       setEdits({});
       toast.success("Registros guardados correctamente");
     } catch {

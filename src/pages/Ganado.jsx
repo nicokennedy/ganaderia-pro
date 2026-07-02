@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ANIMALS_QUERY_KEY, animalService } from "@/services/animalService";
+import { MILK_RECORDS_QUERY_KEY, milkRecordService } from "@/services/milkRecordService";
 import { formatDate, calcularEdad } from "@/lib/utils";
 import EstadoBadge from "@/components/shared/EstadoBadge";
 import { Search, Plus, Eye, Edit, Milk, AlertTriangle } from "lucide-react";
@@ -22,6 +23,15 @@ const FILTROS = [
   { key: "Muerta", label: "Muertas" },
 ];
 
+function parseLitros(value) {
+  return parseFloat(value) || 0;
+}
+
+function formatLitros(value) {
+  const litros = parseLitros(value);
+  return Number.isInteger(litros) ? String(litros) : litros.toFixed(1);
+}
+
 export default function Ganado() {
   const [busqueda, setBusqueda] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("Todos");
@@ -37,6 +47,48 @@ export default function Ganado() {
     queryKey: ANIMALS_QUERY_KEY,
     queryFn: animalService.list,
   });
+
+  const { data: registrosLeche = [] } = useQuery({
+    queryKey: MILK_RECORDS_QUERY_KEY,
+    queryFn: milkRecordService.list,
+  });
+
+  const registrosHoyPorAnimal = registrosLeche.reduce((acc, record) => {
+    if (record.fecha === hoy) {
+      acc[record.animal_id] = record;
+    }
+    return acc;
+  }, {});
+
+  const produccionHoyAnimal = (animal) => {
+    const registroHoy = registrosHoyPorAnimal[animal.id];
+
+    if (registroHoy) {
+      const am = parseLitros(registroHoy.litros_am);
+      const pm = parseLitros(registroHoy.litros_pm);
+      const total = registroHoy.total_litros !== null && registroHoy.total_litros !== undefined
+        ? parseLitros(registroHoy.total_litros)
+        : am + pm;
+
+      return {
+        am,
+        pm,
+        total,
+        hasSplit: registroHoy.litros_am != null || registroHoy.litros_pm != null,
+      };
+    }
+
+    const am = parseLitros(animal.produccion_am);
+    const pm = parseLitros(animal.produccion_pm);
+    const total = parseLitros(animal.produccion_diaria_litros) || am + pm;
+
+    return {
+      am,
+      pm,
+      total,
+      hasSplit: animal.produccion_am != null || animal.produccion_pm != null,
+    };
+  };
 
   const handleSave = async (animalActualizado) => {
     await queryClient.invalidateQueries({ queryKey: ANIMALS_QUERY_KEY });
@@ -60,7 +112,7 @@ export default function Ganado() {
     return matchEstado && matchBusqueda;
   });
 
-  const produccionAnimal = (animal) => Number(animal.produccion_am || 0) + Number(animal.produccion_pm || 0);
+  const produccionAnimal = (animal) => produccionHoyAnimal(animal).total;
   const valorOrden = (animal, campo) => {
     switch (campo) {
       case "nombre":
@@ -118,7 +170,7 @@ export default function Ganado() {
   const enOrdenio = animales.filter(a => a.estado === "Ordeño").length;
   const enRetiro = animales.filter(a => a.retiro_leche_hasta && a.retiro_leche_hasta >= hoy).length;
   const produccionTotal = animales.filter(a => a.estado === "Ordeño")
-    .reduce((s, a) => s + (a.produccion_am || 0) + (a.produccion_pm || 0), 0);
+    .reduce((s, a) => s + produccionHoyAnimal(a).total, 0);
 
 if (animalDetalle) {
   return (
@@ -262,6 +314,7 @@ if (animalDetalle) {
               <tbody className="divide-y divide-border">
                 {filtradosOrdenados.slice(0, 100).map(animal => {
                   const enRetiro = animal.retiro_leche_hasta && animal.retiro_leche_hasta >= hoy;
+                  const produccionHoy = produccionHoyAnimal(animal);
                   return (
                     <tr key={animal.id} className="hover:bg-secondary/30 transition-colors cursor-pointer" onClick={() => setAnimalDetalle(animal)}>
                       <td className="px-4 py-3">
@@ -302,7 +355,9 @@ if (animalDetalle) {
                           <div className="flex items-center justify-end gap-1">
                             <Milk className="w-3.5 h-3.5 text-primary" />
                             <span className="text-sm font-semibold text-primary">
-                              {animal.produccion_am || 0}/{animal.produccion_pm || 0}L
+                              {produccionHoy.hasSplit
+                                ? `${formatLitros(produccionHoy.am)}/${formatLitros(produccionHoy.pm)}L`
+                                : `${formatLitros(produccionHoy.total)}L`}
                             </span>
                           </div>
                         ) : <span className="text-muted-foreground text-xs">-</span>}
@@ -324,6 +379,7 @@ if (animalDetalle) {
           <div className="md:hidden space-y-2">
             {filtradosOrdenados.slice(0, 50).map(animal => {
               const enRetiro = animal.retiro_leche_hasta && animal.retiro_leche_hasta >= hoy;
+              const produccionHoy = produccionHoyAnimal(animal);
               return (
                 <div key={animal.id} className={`bg-card rounded-xl border p-4 ${enRetiro ? 'border-red-200' : 'border-border'}`}
                   onClick={() => setAnimalDetalle(animal)}>
@@ -338,7 +394,10 @@ if (animalDetalle) {
                     <EstadoBadge estado={animal.estado} />
                   </div>
                   {animal.estado === "Ordeño" && (
-                    <p className="text-sm text-primary font-semibold mt-2">🥛 {(animal.produccion_am || 0) + (animal.produccion_pm || 0)}L/día (AM:{animal.produccion_am || 0} PM:{animal.produccion_pm || 0})</p>
+                    <p className="text-sm text-primary font-semibold mt-2">
+                      🥛 {formatLitros(produccionHoy.total)}L/día
+                      {produccionHoy.hasSplit ? ` (AM:${formatLitros(produccionHoy.am)} PM:${formatLitros(produccionHoy.pm)})` : ""}
+                    </p>
                   )}
                   {animal.grupo && <p className="text-xs text-muted-foreground mt-1">👥 {animal.grupo}</p>}
                 </div>
