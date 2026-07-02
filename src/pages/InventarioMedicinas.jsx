@@ -252,7 +252,7 @@ export default function InventarioMedicinas() {
                       </td>
                       <td className="px-4 py-3 text-sm">{item.presentacion || "-"}</td>
                       <td className={`px-4 py-3 text-sm font-semibold ${lowStock ? "text-amber-700" : ""}`}>
-                        {formatStock(item.stock_actual)} {item.unidad_medida || ""}
+                        {formatStock(item.stock_actual)}
                       </td>
                       <td className="px-4 py-3 text-sm">{formatStock(item.stock_minimo)}</td>
                       <td className={`px-4 py-3 text-sm ${expired ? "font-semibold text-red-700" : ""}`}>
