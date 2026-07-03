@@ -5,6 +5,10 @@ import {
   POTRERO_TRABAJOS_QUERY_KEY,
   potreroTrabajoService,
 } from "@/services/potreroTrabajoService";
+import {
+  POTRERO_ROTACIONES_QUERY_KEY,
+  potreroRotacionService,
+} from "@/services/potreroRotacionService";
 import { AlertTriangle, ArrowLeft, Edit, Eye, MapPin, Plus, Power, PowerOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,6 +82,48 @@ function trabajoInicial() {
   };
 }
 
+function rotacionInicial() {
+  return {
+    fecha_entrada: todayStr(),
+    fecha_salida: "",
+    cantidad_animales: "",
+    grupo: "",
+    notas: "",
+  };
+}
+
+function daysSince(fecha) {
+  if (!fecha) return null;
+  const start = new Date(`${fecha}T12:00:00`);
+  const today = new Date(`${todayStr()}T12:00:00`);
+  return Math.max(Math.ceil((today - start) / 86400000), 0);
+}
+
+function average(values) {
+  const valid = values.filter((value) => value !== null && value !== undefined && value !== "");
+  if (valid.length === 0) return null;
+  return valid.reduce((sum, value) => sum + Number(value), 0) / valid.length;
+}
+
+function rotacionSummary(rotaciones = []) {
+  const ordered = [...rotaciones].sort((a, b) => String(b.fecha_entrada || "").localeCompare(String(a.fecha_entrada || "")));
+  const activa = ordered.find((rotacion) => !rotacion.fecha_salida);
+  const ultimaEntrada = ordered[0]?.fecha_entrada || null;
+  const ultimaSalida = ordered.find((rotacion) => rotacion.fecha_salida)?.fecha_salida || null;
+  const promedioOcupacion = average(ordered.map((rotacion) => rotacion.dias_ocupacion));
+  const promedioRotacion = average(ordered.map((rotacion) => rotacion.dias_rotacion));
+
+  return {
+    activa,
+    ultimaEntrada,
+    ultimaSalida,
+    promedioOcupacion,
+    promedioRotacion,
+    diasOcupacionActual: activa ? daysSince(activa.fecha_entrada) : null,
+    cantidadAnimalesActual: activa?.cantidad_animales ?? null,
+  };
+}
+
 export default function Potreros() {
   const [showModal, setShowModal] = useState(false);
   const [editando, setEditando] = useState(null);
@@ -85,6 +131,9 @@ export default function Potreros() {
   const [tab, setTab] = useState("General");
   const [trabajoForm, setTrabajoForm] = useState(trabajoInicial());
   const [guardandoTrabajo, setGuardandoTrabajo] = useState(false);
+  const [rotacionForm, setRotacionForm] = useState(rotacionInicial());
+  const [guardandoRotacion, setGuardandoRotacion] = useState(false);
+  const [salidasRotacion, setSalidasRotacion] = useState({});
   const queryClient = useQueryClient();
 
   const { data: potreros = [], isLoading } = useQuery({
@@ -96,6 +145,17 @@ export default function Potreros() {
     queryKey: [...POTRERO_TRABAJOS_QUERY_KEY, detalle?.id],
     enabled: !!detalle?.id,
     queryFn: () => potreroTrabajoService.listByPotrero(detalle.id),
+  });
+
+  const { data: rotaciones = [], isLoading: isLoadingRotaciones } = useQuery({
+    queryKey: [...POTRERO_ROTACIONES_QUERY_KEY, detalle?.id],
+    enabled: !!detalle?.id,
+    queryFn: () => potreroRotacionService.listByPotrero(detalle.id),
+  });
+
+  const { data: todasRotaciones = [] } = useQuery({
+    queryKey: [...POTRERO_ROTACIONES_QUERY_KEY, "comparativa"],
+    queryFn: () => potreroRotacionService.list(),
   });
 
   useEffect(() => {
@@ -118,7 +178,15 @@ export default function Potreros() {
 
   const activos = potreros.filter((potrero) => potrero.activo !== false);
   const superficieTotal = activos.reduce((sum, potrero) => sum + superficieEnHectareas(potrero), 0);
-  const ocupados = activos.filter((potrero) => potrero.estado === "Ocupado").length;
+  const rotacionesPorPotrero = todasRotaciones.reduce((acc, rotacion) => {
+    const key = String(rotacion.potrero_id);
+    acc[key] = acc[key] || [];
+    acc[key].push(rotacion);
+    return acc;
+  }, {});
+  const ocupados = activos.filter((potrero) => (
+    potrero.estado === "Ocupado" || rotacionSummary(rotacionesPorPotrero[String(potrero.id)] || []).activa
+  )).length;
   const enDescanso = activos.filter((potrero) => potrero.estado === "En descanso").length;
 
   const handleSave = () => {
@@ -142,6 +210,10 @@ export default function Potreros() {
 
   const setTrabajo = (field, value) => {
     setTrabajoForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const setRotacion = (field, value) => {
+    setRotacionForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSaveTrabajo = async () => {
@@ -169,6 +241,31 @@ export default function Potreros() {
     }
   };
 
+  const handleSaveRotacion = async () => {
+    if (!detalle?.id || !rotacionForm.fecha_entrada) return;
+
+    setGuardandoRotacion(true);
+    try {
+      await potreroRotacionService.create(detalle.id, {
+        fecha_entrada: rotacionForm.fecha_entrada,
+        fecha_salida: rotacionForm.fecha_salida || null,
+        cantidad_animales: rotacionForm.cantidad_animales !== "" ? Number(rotacionForm.cantidad_animales) : null,
+        grupo: rotacionForm.grupo || null,
+        notas: rotacionForm.notas || null,
+      });
+      setRotacionForm(rotacionInicial());
+      queryClient.invalidateQueries({ queryKey: POTRERO_ROTACIONES_QUERY_KEY });
+    } finally {
+      setGuardandoRotacion(false);
+    }
+  };
+
+  const handleGuardarSalidaRotacion = async (rotacion) => {
+    const fechaSalida = salidasRotacion[rotacion.id] ?? rotacion.fecha_salida ?? todayStr();
+    await potreroRotacionService.update(rotacion.id, { fecha_salida: fechaSalida || null });
+    queryClient.invalidateQueries({ queryKey: POTRERO_ROTACIONES_QUERY_KEY });
+  };
+
   if (detalle) {
     const capacidad = capacidadPotrero(detalle);
     const ultimaSiembra = trabajos.find((trabajo) => trabajo.tipo === "Siembra");
@@ -178,6 +275,8 @@ export default function Potreros() {
       diffDays(trabajo.fecha_reingreso_seguro) > 0
     ));
     const diasFaltantes = fertilizacionActiva ? diffDays(fertilizacionActiva.fecha_reingreso_seguro) : null;
+    const resumenRotacion = rotacionSummary(rotaciones);
+    const estadoVisual = resumenRotacion.activa ? "Ocupado" : detalle.estado;
 
     return (
       <div className="space-y-5 animate-fade-in">
@@ -228,8 +327,8 @@ export default function Potreros() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-card border border-border rounded-xl p-4">
             <p className="text-sm text-muted-foreground">Estado actual</p>
-            <span className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${estadoClasses[detalle.estado] || "bg-muted text-muted-foreground border-border"}`}>
-              {detalle.estado || "-"}
+            <span className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${estadoClasses[estadoVisual] || "bg-muted text-muted-foreground border-border"}`}>
+              {estadoVisual || "-"}
             </span>
           </div>
           <div className="bg-card border border-border rounded-xl p-4">
@@ -379,11 +478,114 @@ export default function Potreros() {
         )}
 
         {tab === "Rotación" && (
-          <div className="bg-secondary/40 border border-border rounded-xl p-5">
-            <p className="text-sm font-semibold text-foreground">Rotación de animales</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              La ocupación y rotación se gestionará en el próximo paso.
-            </p>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              <SummaryCard
+                label="Ocupación actual"
+                value={resumenRotacion.activa ? `${resumenRotacion.diasOcupacionActual} días` : "—"}
+                sublabel={resumenRotacion.activa ? `${resumenRotacion.cantidadAnimalesActual ?? 0} animales` : "sin ocupación activa"}
+              />
+              <SummaryCard
+                label="Promedio ocupación"
+                value={resumenRotacion.promedioOcupacion != null ? `${formatNumber(resumenRotacion.promedioOcupacion)} días` : "—"}
+                sublabel="histórico"
+              />
+              <SummaryCard
+                label="Promedio rotación"
+                value={resumenRotacion.promedioRotacion != null ? `${formatNumber(resumenRotacion.promedioRotacion)} días` : "—"}
+                sublabel="entre salidas y entradas"
+              />
+              <SummaryCard label="Última entrada" value={resumenRotacion.ultimaEntrada || "—"} sublabel="más reciente" />
+              <SummaryCard label="Última salida" value={resumenRotacion.ultimaSalida || "—"} sublabel="más reciente" />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-4">
+              <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+                <h2 className="font-semibold text-foreground">Registrar ocupación</h2>
+                <div>
+                  <Label className="text-xs font-semibold mb-1.5 block">Fecha entrada</Label>
+                  <Input type="date" value={rotacionForm.fecha_entrada} onChange={(e) => setRotacion("fecha_entrada", e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold mb-1.5 block">Fecha salida</Label>
+                  <Input type="date" value={rotacionForm.fecha_salida} onChange={(e) => setRotacion("fecha_salida", e.target.value)} />
+                  <p className="text-xs text-muted-foreground mt-1">Dejala vacía para marcar ocupación activa.</p>
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold mb-1.5 block">Cantidad animales</Label>
+                  <Input type="number" min="0" value={rotacionForm.cantidad_animales} onChange={(e) => setRotacion("cantidad_animales", e.target.value)} placeholder="Ej: 24" />
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold mb-1.5 block">Grupo / lote</Label>
+                  <Input value={rotacionForm.grupo} onChange={(e) => setRotacion("grupo", e.target.value)} placeholder="Ej: Lote vaquillonas" />
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold mb-1.5 block">Notas</Label>
+                  <Textarea value={rotacionForm.notas} onChange={(e) => setRotacion("notas", e.target.value)} placeholder="Observaciones de entrada o salida..." />
+                </div>
+                <Button onClick={handleSaveRotacion} disabled={guardandoRotacion || !rotacionForm.fecha_entrada} className="w-full">
+                  {guardandoRotacion ? "Guardando..." : "Guardar ocupación"}
+                </Button>
+              </div>
+
+              <div className="bg-card border border-border rounded-xl overflow-hidden">
+                <div className="p-4 border-b border-border">
+                  <h2 className="font-semibold text-foreground">Historial de rotación</h2>
+                </div>
+                {isLoadingRotaciones ? (
+                  <p className="p-6 text-sm text-muted-foreground">Cargando rotaciones...</p>
+                ) : rotaciones.length === 0 ? (
+                  <p className="p-6 text-sm text-muted-foreground">Todavía no hay ocupaciones registradas para este potrero.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-border bg-muted/30">
+                          <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Entrada</th>
+                          <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Salida</th>
+                          <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Ocupación</th>
+                          <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Rotación</th>
+                          <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Animales</th>
+                          <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Notas</th>
+                          <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Editar salida</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rotaciones.map((rotacion) => (
+                          <tr key={rotacion.id} className="border-b border-border hover:bg-muted/20">
+                            <td className="px-4 py-3 text-sm font-semibold">{rotacion.fecha_entrada}</td>
+                            <td className="px-4 py-3 text-sm">
+                              {rotacion.fecha_salida || <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">Activa</span>}
+                            </td>
+                            <td className="px-4 py-3 text-sm">{rotacion.dias_ocupacion ?? (rotacion.fecha_salida ? "—" : `${daysSince(rotacion.fecha_entrada)} actual`)}</td>
+                            <td className="px-4 py-3 text-sm">{rotacion.dias_rotacion ?? "—"}</td>
+                            <td className="px-4 py-3 text-sm">
+                              {[rotacion.cantidad_animales ?? "—", rotacion.grupo].filter(Boolean).join(" · ")}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-muted-foreground max-w-xs">
+                              <span className="line-clamp-2">{rotacion.notas || "—"}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex min-w-48 items-center gap-2">
+                                <Input
+                                  type="date"
+                                  value={salidasRotacion[rotacion.id] ?? rotacion.fecha_salida ?? ""}
+                                  onChange={(e) => setSalidasRotacion((prev) => ({ ...prev, [rotacion.id]: e.target.value }))}
+                                  className="h-8"
+                                />
+                                <Button size="sm" variant="outline" onClick={() => handleGuardarSalidaRotacion(rotacion)}>
+                                  Guardar
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -419,6 +621,63 @@ export default function Potreros() {
       </div>
 
       <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="p-4 border-b border-border">
+          <h2 className="font-semibold">Resumen de rotación</h2>
+          <p className="text-xs text-muted-foreground mt-1">Vista comparativa por potrero</p>
+        </div>
+        {isLoading ? (
+          <p className="p-6 text-sm text-muted-foreground">Cargando resumen...</p>
+        ) : potreros.length === 0 ? (
+          <p className="p-6 text-sm text-muted-foreground">No hay potreros para comparar.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border bg-muted/30">
+                  <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Potrero</th>
+                  <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Estado</th>
+                  <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Última entrada</th>
+                  <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Última salida</th>
+                  <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Días ocupación actual</th>
+                  <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Promedio ocupación</th>
+                  <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Promedio rotación</th>
+                  <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Animales actual</th>
+                </tr>
+              </thead>
+              <tbody>
+                {potreros.map((potrero) => {
+                  const resumen = rotacionSummary(rotacionesPorPotrero[String(potrero.id)] || []);
+                  const estado = resumen.activa ? "Ocupado" : potrero.estado;
+
+                  return (
+                    <tr key={potrero.id} className="border-b border-border hover:bg-muted/20">
+                      <td className="px-4 py-3">
+                        <button type="button" onClick={() => { setDetalle(potrero); setTab("Rotación"); }} className="text-left">
+                          <span className="block text-sm font-semibold text-foreground">{potrero.nombre}</span>
+                          <span className="block text-xs text-muted-foreground">{potrero.numero ? `Código ${potrero.numero}` : "Sin código"}</span>
+                        </button>
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${estadoClasses[estado] || "bg-muted text-muted-foreground border-border"}`}>
+                          {estado || "—"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm">{resumen.ultimaEntrada || "—"}</td>
+                      <td className="px-4 py-3 text-sm">{resumen.ultimaSalida || "—"}</td>
+                      <td className="px-4 py-3 text-sm">{resumen.diasOcupacionActual != null ? resumen.diasOcupacionActual : "—"}</td>
+                      <td className="px-4 py-3 text-sm">{resumen.promedioOcupacion != null ? formatNumber(resumen.promedioOcupacion) : "—"}</td>
+                      <td className="px-4 py-3 text-sm">{resumen.promedioRotacion != null ? formatNumber(resumen.promedioRotacion) : "—"}</td>
+                      <td className="px-4 py-3 text-sm">{resumen.cantidadAnimalesActual ?? "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="p-4 border-b border-border flex items-center gap-2">
           <MapPin className="w-4 h-4 text-muted-foreground" />
           <h2 className="font-semibold">Listado de potreros</h2>
@@ -447,50 +706,54 @@ export default function Potreros() {
                 </tr>
               </thead>
               <tbody>
-                {potreros.map((potrero) => (
-                  <tr key={potrero.id} className={`border-b border-border hover:bg-muted/20 ${potrero.activo === false ? "opacity-60" : ""}`}>
-                    <td className="px-4 py-3">
-                      <p className="text-sm font-semibold">{potrero.nombre}</p>
-                      <p className="text-xs text-muted-foreground">{potrero.numero ? `Código ${potrero.numero}` : "Sin código"}</p>
-                    </td>
-                    <td className="px-4 py-3 text-sm">{potrero.tipo || "-"}</td>
-                    <td className="px-4 py-3 text-sm">
-                      <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${estadoClasses[potrero.estado] || "bg-muted text-muted-foreground border-border"}`}>
-                        {potrero.estado || "-"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm font-semibold">
-                      {formatNumber(superficiePotrero(potrero))} {unidadPotrero(potrero)}
-                    </td>
-                    <td className="px-4 py-3 text-sm">{capacidadPotrero(potrero) ?? "-"}</td>
-                    <td className="px-4 py-3 text-sm">{potrero.activo === false ? "No" : "Sí"}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setDetalle(potrero)}
-                          className="p-1.5 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openEdit(potrero)}
-                          className="p-1.5 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => toggleActivo(potrero)}
-                          className="p-1.5 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          {potrero.activo === false ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {potreros.map((potrero) => {
+                  const estado = rotacionSummary(rotacionesPorPotrero[String(potrero.id)] || []).activa ? "Ocupado" : potrero.estado;
+
+                  return (
+                    <tr key={potrero.id} className={`border-b border-border hover:bg-muted/20 ${potrero.activo === false ? "opacity-60" : ""}`}>
+                      <td className="px-4 py-3">
+                        <p className="text-sm font-semibold">{potrero.nombre}</p>
+                        <p className="text-xs text-muted-foreground">{potrero.numero ? `Código ${potrero.numero}` : "Sin código"}</p>
+                      </td>
+                      <td className="px-4 py-3 text-sm">{potrero.tipo || "-"}</td>
+                      <td className="px-4 py-3 text-sm">
+                        <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${estadoClasses[estado] || "bg-muted text-muted-foreground border-border"}`}>
+                          {estado || "-"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm font-semibold">
+                        {formatNumber(superficiePotrero(potrero))} {unidadPotrero(potrero)}
+                      </td>
+                      <td className="px-4 py-3 text-sm">{capacidadPotrero(potrero) ?? "-"}</td>
+                      <td className="px-4 py-3 text-sm">{potrero.activo === false ? "No" : "Sí"}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setDetalle(potrero)}
+                            className="p-1.5 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openEdit(potrero)}
+                            className="p-1.5 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleActivo(potrero)}
+                            className="p-1.5 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            {potrero.activo === false ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
