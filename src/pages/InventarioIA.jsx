@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Syringe, X } from "lucide-react";
+import { Plus, Syringe, Trash2, X } from "lucide-react";
 
 const initialForm = {
   toro_id: "",
@@ -113,6 +113,14 @@ export default function InventarioIA() {
     }
   };
 
+  const handleDelete = async (item) => {
+    const ok = window.confirm(`¿Borrar la compra de pajuelas de "${item.toro_nombre || "toro sin nombre"}"?`);
+    if (!ok) return;
+
+    await inventarioIAService.destroy(item.id);
+    await queryClient.invalidateQueries({ queryKey: INVENTARIO_IA_QUERY_KEY });
+  };
+
   const stockTotal = inventario.reduce(
     (sum, item) => sum + Number(item.stock_actual || 0),
     0
@@ -204,6 +212,7 @@ export default function InventarioIA() {
                   <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">
                     Precio
                   </th>
+                  <th className="px-4 py-3"></th>
                 </tr>
               </thead>
 
@@ -238,6 +247,16 @@ export default function InventarioIA() {
                     </td>
                     <td className="px-4 py-3 text-sm">
                       {item.precio_unitario ? `$${item.precio_unitario}` : "-"}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(item)}
+                        className="p-1.5 hover:bg-red-50 rounded-lg text-muted-foreground hover:text-red-600 transition-colors"
+                        title="Borrar compra"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </td>
                   </tr>
                 ))}

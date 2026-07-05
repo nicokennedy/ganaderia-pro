@@ -42,6 +42,8 @@ export default function Eventos() {
     medicamento: "", dosis: "", notas: "",
     requiere_retiro_leche: false, dias_retiro: "",
     sexo_cria: "Hembra", nombre_cria: "", peso_cria: "",
+    crear_cria: false, cria_nombre: "", cria_arete: "", cria_numero_id: "",
+    cria_numero_registro: "", cria_sexo: "Hembra", cria_fecha_nacimiento: new Date().toISOString().split('T')[0],
     resultado: "", grupo_nuevo: "", inventario_ia_id: "",
     inventario_medicina_id: "", medicina_cantidad_usada: "",
   });
@@ -149,8 +151,24 @@ export default function Eventos() {
     medicina_unidad_medida: (form.tipo === "Tratamiento" || form.tipo === "Vacuna") && medicinaSeleccionada ? medicinaSeleccionada.unidad_medida : null,
     medicina_cantidad_usada: (form.tipo === "Tratamiento" || form.tipo === "Vacuna") && medicinaSeleccionada ? cantidadMedicinaUsada : null,
     sexo_cria: form.tipo === "Parto" ? form.sexo_cria : null,
-    nombre_cria: form.tipo === "Parto" ? form.nombre_cria : null,
+    nombre_cria: form.tipo === "Parto" ? (form.crear_cria ? form.cria_nombre || form.nombre_cria : form.nombre_cria) : null,
     peso_cria: form.tipo === "Parto" && form.peso_cria ? Number(form.peso_cria) : null,
+    crear_cria: form.tipo === "Parto" ? form.crear_cria : false,
+    agregar_cria: form.tipo === "Parto" ? form.crear_cria : false,
+    cria_nombre: form.tipo === "Parto" && form.crear_cria ? form.cria_nombre || form.nombre_cria || null : null,
+    cria_arete: form.tipo === "Parto" && form.crear_cria ? form.cria_arete || null : null,
+    cria_numero_id: form.tipo === "Parto" && form.crear_cria ? form.cria_numero_id || null : null,
+    cria_numero_registro: form.tipo === "Parto" && form.crear_cria ? form.cria_numero_registro || null : null,
+    cria_sexo: form.tipo === "Parto" && form.crear_cria ? form.cria_sexo || form.sexo_cria : null,
+    cria_fecha_nacimiento: form.tipo === "Parto" && form.crear_cria ? form.cria_fecha_nacimiento || form.fecha : null,
+    cria: form.tipo === "Parto" && form.crear_cria ? {
+      nombre: form.cria_nombre || form.nombre_cria || null,
+      arete: form.cria_arete || null,
+      numero_id: form.cria_numero_id || null,
+      numero_registro: form.cria_numero_registro || null,
+      sexo: form.cria_sexo || form.sexo_cria,
+      fecha_nacimiento: form.cria_fecha_nacimiento || form.fecha,
+    } : null,
     requiere_retiro_leche: form.tipo === "Tratamiento" ? form.requiere_retiro_leche : false,
     dias_retiro: form.tipo === "Tratamiento" && form.dias_retiro ? Number(form.dias_retiro) : 0,
     resultado: form.tipo === "Chequeo veterinario" || form.tipo === "Diagnóstico" || form.tipo === "Revisión" ? form.resultado : null,
@@ -168,6 +186,11 @@ export default function Eventos() {
   const validateEvento = ({ requireAnimal }) => {
     if (form.tipo === "Inseminacion" && !pajuelaSeleccionada) {
       toast.error("Seleccioná una pajuela disponible");
+      return false;
+    }
+
+    if (form.tipo === "Parto" && form.crear_cria && !form.cria_nombre && !form.nombre_cria && !form.cria_arete) {
+      toast.error("Ingresá al menos nombre o arete de la cría");
       return false;
     }
 
@@ -427,6 +450,66 @@ export default function Eventos() {
             <div>
               <Label className="text-xs font-semibold mb-1.5 block">Nombre de la cría</Label>
               <Input value={form.nombre_cria} onChange={e => set("nombre_cria", e.target.value)} placeholder="Opcional" />
+            </div>
+            <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
+              <Label className="text-xs font-semibold block">¿Crear cría en inventario de ganado?</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => set("crear_cria", true)}
+                  className={`rounded-lg border px-3 py-2 text-sm font-semibold ${form.crear_cria ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground"}`}
+                >
+                  Sí
+                </button>
+                <button
+                  type="button"
+                  onClick={() => set("crear_cria", false)}
+                  className={`rounded-lg border px-3 py-2 text-sm font-semibold ${!form.crear_cria ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground"}`}
+                >
+                  No
+                </button>
+              </div>
+
+              {form.crear_cria && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs font-semibold mb-1.5 block">Nombre</Label>
+                      <Input value={form.cria_nombre} onChange={e => set("cria_nombre", e.target.value)} placeholder="Nombre" />
+                    </div>
+                    <div>
+                      <Label className="text-xs font-semibold mb-1.5 block">Arete</Label>
+                      <Input value={form.cria_arete} onChange={e => set("cria_arete", e.target.value)} placeholder="Arete" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs font-semibold mb-1.5 block">ID oficial</Label>
+                      <Input value={form.cria_numero_id} onChange={e => set("cria_numero_id", e.target.value)} placeholder="ID oficial" />
+                    </div>
+                    <div>
+                      <Label className="text-xs font-semibold mb-1.5 block">Número registro</Label>
+                      <Input value={form.cria_numero_registro} onChange={e => set("cria_numero_registro", e.target.value)} placeholder="Registro" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs font-semibold mb-1.5 block">Sexo</Label>
+                      <Select value={form.cria_sexo} onValueChange={v => set("cria_sexo", v)}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Hembra">Hembra</SelectItem>
+                          <SelectItem value="Macho">Macho</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs font-semibold mb-1.5 block">Fecha nacimiento</Label>
+                      <Input type="date" value={form.cria_fecha_nacimiento} onChange={e => set("cria_fecha_nacimiento", e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

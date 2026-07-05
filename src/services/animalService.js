@@ -7,6 +7,9 @@ const DECIMAL_FIELDS = [
   "produccion_diaria_litros",
   "produccion_am",
   "produccion_pm",
+  "racion_balanceado_kg",
+  "costo_balanceado_kg",
+  "precio_leche_litro",
 ];
 
 function toNumberOrOriginal(value) {

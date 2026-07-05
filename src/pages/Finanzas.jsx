@@ -2,8 +2,11 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FINANCIAL_TRANSACTIONS_QUERY_KEY, financialTransactionService } from "@/services/financialTransactionService";
 import { formatCurrency, formatDate, getMonthName } from "@/lib/utils";
-import { Plus, TrendingUp, TrendingDown, DollarSign, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Plus, TrendingUp, TrendingDown, DollarSign, ArrowUpRight, ArrowDownRight, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import TransaccionModal from "@/components/finanzas/TransaccionModal";
 
@@ -21,11 +24,39 @@ const CATEGORIAS_COLORES = {
   "Otros": "#94a3b8",
 };
 
+const CATEGORIAS = Object.keys(CATEGORIAS_COLORES);
+
+function dateStr(date) {
+  return date.toISOString().split("T")[0];
+}
+
+function previousMonthRange(fechaDesde, fechaHasta) {
+  const from = new Date(`${fechaDesde}T12:00:00`);
+  const to = new Date(`${fechaHasta}T12:00:00`);
+  from.setMonth(from.getMonth() - 1);
+  to.setMonth(to.getMonth() - 1);
+  return { from: dateStr(from), to: dateStr(to) };
+}
+
+function transactionInRange(t, fechaDesde, fechaHasta) {
+  if (!t.fecha) return false;
+  return t.fecha >= fechaDesde && t.fecha <= fechaHasta;
+}
+
+function totals(items) {
+  const ingresos = items.filter(t => t.tipo === "Ingreso").reduce((s, t) => s + (t.monto_usd || 0), 0);
+  const egresos = items.filter(t => t.tipo === "Egreso").reduce((s, t) => s + (t.monto_usd || 0), 0);
+  return { total: ingresos + egresos, ingresos, egresos, neto: ingresos - egresos };
+}
+
 export default function Finanzas() {
   const [showModal, setShowModal] = useState(false);
   const [tipoFiltro, setTipoFiltro] = useState("Todos");
   const queryClient = useQueryClient();
   const now = new Date();
+  const [fechaDesde, setFechaDesde] = useState(dateStr(new Date(now.getFullYear(), now.getMonth(), 1)));
+  const [fechaHasta, setFechaHasta] = useState(dateStr(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
+  const [categoriaFiltro, setCategoriaFiltro] = useState("Todas");
 
   const { data: transacciones = [], isLoading } = useQuery({
     queryKey: FINANCIAL_TRANSACTIONS_QUERY_KEY,
@@ -35,10 +66,19 @@ export default function Finanzas() {
   const currentMonth = now.getMonth();
   const currentYear = now.getFullYear();
 
-  const mesFiltradas = transacciones.filter(t => {
-    const d = new Date(t.fecha + "T12:00:00");
-    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+  const applyFilters = (items, from = fechaDesde, to = fechaHasta) => items.filter(t => {
+    const matchFecha = transactionInRange(t, from, to);
+    const matchTipo = tipoFiltro === "Todos" || t.tipo === tipoFiltro;
+    const matchCategoria = categoriaFiltro === "Todas" || t.categoria === categoriaFiltro;
+    return matchFecha && matchTipo && matchCategoria;
   });
+
+  const mesFiltradas = applyFilters(transacciones);
+  const rangoAnterior = previousMonthRange(fechaDesde, fechaHasta);
+  const filtradasMesAnterior = applyFilters(transacciones, rangoAnterior.from, rangoAnterior.to);
+  const totalesFiltro = totals(mesFiltradas);
+  const totalesAnterior = totals(filtradasMesAnterior);
+  const diferenciaNeto = totalesFiltro.neto - totalesAnterior.neto;
 
   const ingresosMes = mesFiltradas.filter(t => t.tipo === 'Ingreso').reduce((s, t) => s + (t.monto_usd || 0), 0);
   const egresosMes = mesFiltradas.filter(t => t.tipo === 'Egreso').reduce((s, t) => s + (t.monto_usd || 0), 0);
@@ -70,14 +110,22 @@ export default function Finanzas() {
     };
   });
 
-  const transFiltered = tipoFiltro === "Todos" ? transacciones : transacciones.filter(t => t.tipo === tipoFiltro);
+  const transFiltered = mesFiltradas;
+
+  const handleDelete = async (transaction) => {
+    const ok = window.confirm(`¿Borrar la transacción "${transaction.categoria}" de ${formatDate(transaction.fecha)}?`);
+    if (!ok) return;
+
+    await financialTransactionService.destroy(transaction.id);
+    queryClient.invalidateQueries({ queryKey: FINANCIAL_TRANSACTIONS_QUERY_KEY });
+  };
 
   return (
     <div className="space-y-5 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Finanzas</h1>
-          <p className="text-muted-foreground text-sm">{getMonthName(currentMonth)} {currentYear}</p>
+          <p className="text-muted-foreground text-sm">{fechaDesde} a {fechaHasta}</p>
         </div>
         <Button onClick={() => setShowModal(true)} className="bg-primary text-primary-foreground gap-2">
           <Plus className="w-4 h-4" />
@@ -85,15 +133,59 @@ export default function Finanzas() {
         </Button>
       </div>
 
+      <div className="bg-card rounded-xl border border-border p-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div>
+            <Label className="text-xs font-semibold mb-1.5 block">Fecha desde</Label>
+            <Input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs font-semibold mb-1.5 block">Fecha hasta</Label>
+            <Input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs font-semibold mb-1.5 block">Categoría / item</Label>
+            <Select value={categoriaFiltro} onValueChange={setCategoriaFiltro}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Todas">Todas</SelectItem>
+                {CATEGORIAS.map(categoria => (
+                  <SelectItem key={categoria} value={categoria}>{categoria}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs font-semibold mb-1.5 block">Tipo</Label>
+            <Select value={tipoFiltro} onValueChange={setTipoFiltro}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Todos">Todos</SelectItem>
+                <SelectItem value="Ingreso">Ingreso</SelectItem>
+                <SelectItem value="Egreso">Egreso</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-card rounded-xl border border-border p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <DollarSign className="w-4 h-4 text-primary" />
+            <p className="text-xs text-muted-foreground font-semibold">Total filtrado</p>
+          </div>
+          <p className="text-2xl font-bold text-foreground">{formatCurrency(totalesFiltro.total)}</p>
+          <p className="text-xs text-muted-foreground mt-1">{transFiltered.length} movimientos</p>
+        </div>
         <div className="bg-card rounded-xl border border-green-200 p-5">
           <div className="flex items-center gap-2 mb-2">
             <ArrowUpRight className="w-4 h-4 text-green-600" />
             <p className="text-xs text-muted-foreground font-semibold">Ingresos</p>
           </div>
           <p className="text-2xl font-bold text-green-600">{formatCurrency(ingresosMes)}</p>
-          <p className="text-xs text-muted-foreground mt-1">este mes</p>
+          <p className="text-xs text-muted-foreground mt-1">filtrados</p>
         </div>
         <div className="bg-card rounded-xl border border-red-200 p-5">
           <div className="flex items-center gap-2 mb-2">
@@ -101,7 +193,7 @@ export default function Finanzas() {
             <p className="text-xs text-muted-foreground font-semibold">Egresos</p>
           </div>
           <p className="text-2xl font-bold text-red-500">{formatCurrency(egresosMes)}</p>
-          <p className="text-xs text-muted-foreground mt-1">este mes</p>
+          <p className="text-xs text-muted-foreground mt-1">filtrados</p>
         </div>
         <div className={`bg-card rounded-xl border p-5 ${gananciaMes >= 0 ? 'border-green-200' : 'border-red-200'}`}>
           <div className="flex items-center gap-2 mb-2">
@@ -109,8 +201,13 @@ export default function Finanzas() {
             <p className="text-xs text-muted-foreground font-semibold">Ganancia</p>
           </div>
           <p className={`text-2xl font-bold ${gananciaMes >= 0 ? 'text-green-600' : 'text-red-500'}`}>{formatCurrency(gananciaMes)}</p>
-          <p className="text-xs text-muted-foreground mt-1">este mes</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {diferenciaNeto === 0 ? "igual que mes anterior" : `${diferenciaNeto > 0 ? "+" : ""}${formatCurrency(diferenciaNeto)} vs mes anterior`}
+          </p>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <div className="bg-card rounded-xl border border-border p-5">
           <div className="flex items-center gap-2 mb-2">
             <DollarSign className="w-4 h-4 text-primary" />
@@ -118,6 +215,23 @@ export default function Finanzas() {
           </div>
           <p className="text-2xl font-bold text-primary">${costoPorLitro}</p>
           <p className="text-xs text-muted-foreground mt-1">{litrosMes.toLocaleString()} L vendidos</p>
+        </div>
+        <div className="md:col-span-3 bg-card rounded-xl border border-border p-5">
+          <p className="text-sm font-semibold text-foreground">Comparación contra mes anterior</p>
+          <div className="grid grid-cols-3 gap-3 mt-3 text-sm">
+            <div>
+              <p className="text-xs text-muted-foreground">Ingresos anteriores</p>
+              <p className="font-bold text-green-600">{formatCurrency(totalesAnterior.ingresos)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Egresos anteriores</p>
+              <p className="font-bold text-red-500">{formatCurrency(totalesAnterior.egresos)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Neto anterior</p>
+              <p className={`font-bold ${totalesAnterior.neto >= 0 ? "text-green-600" : "text-red-500"}`}>{formatCurrency(totalesAnterior.neto)}</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -160,14 +274,7 @@ export default function Finanzas() {
       <div className="bg-card rounded-xl border border-border">
         <div className="flex items-center justify-between p-5 border-b border-border">
           <h2 className="font-semibold text-foreground">Transacciones</h2>
-          <div className="flex gap-2">
-            {["Todos", "Ingreso", "Egreso"].map(t => (
-              <button key={t} onClick={() => setTipoFiltro(t)}
-                className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${tipoFiltro === t ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-primary/10'}`}>
-                {t}
-              </button>
-            ))}
-          </div>
+          <p className="text-xs text-muted-foreground">{transFiltered.length} resultados</p>
         </div>
         {isLoading ? (
           <div className="text-center py-10 text-muted-foreground">Cargando...</div>
@@ -189,6 +296,14 @@ export default function Finanzas() {
                 <p className={`text-sm font-bold ${t.tipo === 'Ingreso' ? 'text-green-600' : 'text-red-500'}`}>
                   {t.tipo === 'Ingreso' ? '+' : '-'}{formatCurrency(t.monto_usd)}
                 </p>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(t)}
+                  className="p-1.5 hover:bg-red-50 rounded-lg text-muted-foreground hover:text-red-600 transition-colors"
+                  title="Borrar transacción"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             ))}
           </div>

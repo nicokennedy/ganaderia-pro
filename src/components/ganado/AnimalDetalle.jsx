@@ -1,23 +1,37 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { eventoService, eventosQueryKey } from "@/services/eventoService";
 import { milkRecordService } from "@/services/milkRecordService";
+import {
+  LITROS_LIBRES_QUERY_KEY,
+  litrosLibresService,
+} from "@/services/litrosLibresService";
 import { ANIMALS_QUERY_KEY, animalService } from "@/services/animalService";
 import { formatDate, calcularEdad } from "@/lib/utils";
 import EstadoBadge from "@/components/shared/EstadoBadge";
 import EventoRapidoModal from "@/components/ganado/EventoRapidoModal";
-import { ChevronLeft, ChevronRight, Plus, Milk, Heart, Weight, Users, Calendar, AlertTriangle, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Milk, Heart, Weight, Users, Calendar, AlertTriangle, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
-const TABS = ["General", "Registro Lechero", "Reproducción", "Salud", "Agrupamiento", "Pedigrí", "Historial"];
+const TABS = ["General", "Registro Lechero", "Litros Libres", "Reproducción", "Salud", "Agrupamiento", "Pedigrí", "Historial"];
 
 export default function AnimalDetalle({ animal, animales = [], animalesNavegacion = [], onBack, onEdit, onSelectAnimal }) {
 
   const [showEventoModal, setShowEventoModal] = useState(false);
   const [tab, setTab] = useState("General");
   const [busquedaAnimal, setBusquedaAnimal] = useState("");
+  const [litrosLibresForm, setLitrosLibresForm] = useState({
+    fecha: new Date().toISOString().split('T')[0],
+    produccion_total_dia: "",
+    balanceado_kg_dia: "",
+    costo_por_kg: "",
+    precio_leche_litro: "",
+    notas: "",
+  });
+  const [guardandoLitrosLibres, setGuardandoLitrosLibres] = useState(false);
+  const queryClient = useQueryClient();
   const fincaId = animal?.finca_id;
 
   const { data: eventos = [], refetch: refetchEventos } = useQuery({
@@ -34,6 +48,12 @@ export default function AnimalDetalle({ animal, animales = [], animalesNavegacio
       const records = await milkRecordService.list({ animal_id: animal.id });
       return records.slice(0, 60);
     },
+  });
+
+  const { data: registrosLitrosLibres = [] } = useQuery({
+    queryKey: [...LITROS_LIBRES_QUERY_KEY, animal.id],
+    enabled: !!animal?.id,
+    queryFn: () => litrosLibresService.list({ animal_id: animal.id }),
   });
 
 const { data: animalesFinca = [] } = useQuery({
@@ -109,6 +129,84 @@ const seleccionarAnimal = (animalSeleccionado) => {
     PM: r.litros_pm || 0,
     total: r.total_litros || 0,
   }));
+  const produccionDesdeRegistroLeche = (fecha) => {
+    const registro = registrosLeche.find(r => r.fecha === fecha);
+    if (!registro) {
+      return Number(animal.produccion_diaria_litros || 0) || Number(animal.produccion_am || 0) + Number(animal.produccion_pm || 0);
+    }
+
+    return Number(registro.total_litros ?? 0) || Number(registro.litros_am || 0) + Number(registro.litros_pm || 0);
+  };
+
+  const registroLitrosLibresActual = registrosLitrosLibres.find(r => r.fecha === litrosLibresForm.fecha);
+
+  useEffect(() => {
+    const fecha = litrosLibresForm.fecha || hoy;
+    const registroGuardado = registrosLitrosLibres.find(r => r.fecha === fecha);
+
+    setLitrosLibresForm({
+      fecha,
+      produccion_total_dia: registroGuardado?.produccion_total_dia ?? (produccionDesdeRegistroLeche(fecha) || ""),
+      balanceado_kg_dia: registroGuardado?.balanceado_kg_dia ?? animal.racion_balanceado_kg ?? "",
+      costo_por_kg: registroGuardado?.costo_por_kg ?? animal.costo_balanceado_kg ?? "",
+      precio_leche_litro: registroGuardado?.precio_leche_litro ?? animal.precio_leche_litro ?? "",
+      notas: registroGuardado?.notas ?? "",
+    });
+  }, [animal.id, animal.racion_balanceado_kg, animal.costo_balanceado_kg, animal.precio_leche_litro, litrosLibresForm.fecha, registrosLeche, registrosLitrosLibres]);
+
+  const setLitrosLibres = (field, value) => {
+    setLitrosLibresForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const produccionTotalDia = Number(litrosLibresForm.produccion_total_dia || 0);
+  const kgBalanceado = Number(litrosLibresForm.balanceado_kg_dia || 0);
+  const costoKg = Number(litrosLibresForm.costo_por_kg || 0);
+  const precioLitro = Number(litrosLibresForm.precio_leche_litro || 0);
+  const costoBalanceado = kgBalanceado * costoKg;
+  const ingresoLeche = produccionTotalDia * precioLitro;
+  const margenSimple = ingresoLeche - costoBalanceado;
+  const litrosLibres = precioLitro > 0 ? margenSimple / precioLitro : 0;
+
+  const guardarLitrosLibres = async () => {
+    setGuardandoLitrosLibres(true);
+    try {
+      const payload = {
+        animal_id: animal.id,
+        fecha: litrosLibresForm.fecha,
+        produccion_total_dia: produccionTotalDia,
+        balanceado_kg_dia: kgBalanceado,
+        costo_por_kg: costoKg,
+        precio_leche_litro: precioLitro,
+        notas: litrosLibresForm.notas || null,
+      };
+
+      if (registroLitrosLibresActual?.id) {
+        await litrosLibresService.update(registroLitrosLibresActual.id, payload);
+      } else {
+        await litrosLibresService.create(payload);
+      }
+
+      const actualizado = await animalService.update(animal.id, {
+        racion_balanceado_kg: kgBalanceado,
+        costo_balanceado_kg: costoKg,
+        precio_leche_litro: precioLitro,
+        produccion_diaria_litros: produccionTotalDia,
+      });
+      await queryClient.invalidateQueries({ queryKey: LITROS_LIBRES_QUERY_KEY });
+      await queryClient.invalidateQueries({ queryKey: ANIMALS_QUERY_KEY });
+      onSelectAnimal?.({ ...animal, ...actualizado });
+    } finally {
+      setGuardandoLitrosLibres(false);
+    }
+  };
+
+  const borrarLitrosLibres = async (record) => {
+    const ok = window.confirm(`¿Borrar el registro de Litros Libres del ${formatDate(record.fecha)}?`);
+    if (!ok) return;
+
+    await litrosLibresService.destroy(record.id);
+    await queryClient.invalidateQueries({ queryKey: LITROS_LIBRES_QUERY_KEY });
+  };
 
   const eventosOrdenados = [...eventos].sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
   const eventosSalud = eventosOrdenados.filter(e => ["Enfermedad", "Tratamiento", "Vacuna", "Chequeo veterinario", "Diagnóstico", "Revisión", "Secado"].includes(e.tipo));
@@ -393,6 +491,113 @@ const seleccionarAnimal = (animalSeleccionado) => {
                   ))}
                 </tbody>
               </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tab === "Litros Libres" && (
+        <div className="space-y-4">
+          <div className="bg-card rounded-xl border border-border p-5">
+            <h3 className="font-semibold text-foreground mb-4">Litros Libres</h3>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Fecha</label>
+                <Input type="date" value={litrosLibresForm.fecha} onChange={e => setLitrosLibres("fecha", e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Producción total día</label>
+                <Input type="number" step="0.1" value={litrosLibresForm.produccion_total_dia} onChange={e => setLitrosLibres("produccion_total_dia", e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Balanceado kg/día</label>
+                <Input type="number" step="0.1" value={litrosLibresForm.balanceado_kg_dia} onChange={e => setLitrosLibres("balanceado_kg_dia", e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Costo por kg</label>
+                <Input type="number" step="0.01" value={litrosLibresForm.costo_por_kg} onChange={e => setLitrosLibres("costo_por_kg", e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Precio leche/L</label>
+                <Input type="number" step="0.01" value={litrosLibresForm.precio_leche_litro} onChange={e => setLitrosLibres("precio_leche_litro", e.target.value)} />
+              </div>
+            </div>
+            <div className="mt-3">
+              <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Notas</label>
+              <Input value={litrosLibresForm.notas} onChange={e => setLitrosLibres("notas", e.target.value)} placeholder="Observaciones opcionales" />
+            </div>
+            <Button onClick={guardarLitrosLibres} disabled={guardandoLitrosLibres} className="mt-4">
+              {guardandoLitrosLibres ? "Guardando..." : registroLitrosLibresActual ? "Actualizar registro" : "Guardar registro"}
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-card rounded-xl border border-border p-4">
+              <p className="text-xs text-muted-foreground">Costo balanceado</p>
+              <p className="text-2xl font-bold text-red-500">${costoBalanceado.toFixed(2)}</p>
+            </div>
+            <div className="bg-card rounded-xl border border-border p-4">
+              <p className="text-xs text-muted-foreground">Ingreso leche</p>
+              <p className="text-2xl font-bold text-green-600">${ingresoLeche.toFixed(2)}</p>
+            </div>
+            <div className="bg-card rounded-xl border border-border p-4">
+              <p className="text-xs text-muted-foreground">Margen simple</p>
+              <p className={`text-2xl font-bold ${margenSimple >= 0 ? "text-green-600" : "text-red-500"}`}>${margenSimple.toFixed(2)}</p>
+            </div>
+            <div className="bg-card rounded-xl border border-border p-4">
+              <p className="text-xs text-muted-foreground">Litros libres</p>
+              <p className="text-2xl font-bold text-primary">{litrosLibres.toFixed(1)}L</p>
+            </div>
+          </div>
+
+          <div className="bg-card rounded-xl border border-border overflow-hidden">
+            <div className="p-4 border-b border-border">
+              <h3 className="font-semibold text-foreground">Historial de Litros Libres</h3>
+            </div>
+            {registrosLitrosLibres.length === 0 ? (
+              <p className="text-center text-muted-foreground py-6 text-sm">Sin registros guardados.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-secondary/50">
+                    <tr>
+                      <th className="text-left px-4 py-2 text-xs text-muted-foreground">Fecha</th>
+                      <th className="text-right px-4 py-2 text-xs text-muted-foreground">Producción</th>
+                      <th className="text-right px-4 py-2 text-xs text-muted-foreground">Kg balanceado</th>
+                      <th className="text-right px-4 py-2 text-xs text-muted-foreground">Costo bal.</th>
+                      <th className="text-right px-4 py-2 text-xs text-muted-foreground">Ingreso</th>
+                      <th className="text-right px-4 py-2 text-xs text-muted-foreground">Margen</th>
+                      <th className="text-right px-4 py-2 text-xs text-muted-foreground">Litros libres</th>
+                      <th className="px-4 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {registrosLitrosLibres.map(record => (
+                      <tr key={record.id} className="hover:bg-secondary/20">
+                        <td className="px-4 py-2">
+                          <button type="button" onClick={() => setLitrosLibres("fecha", record.fecha)} className="font-semibold text-foreground hover:text-primary">
+                            {formatDate(record.fecha)}
+                          </button>
+                          {record.notas && <p className="text-xs text-muted-foreground">{record.notas}</p>}
+                        </td>
+                        <td className="px-4 py-2 text-right">{record.produccion_total_dia}L</td>
+                        <td className="px-4 py-2 text-right">{record.balanceado_kg_dia}kg</td>
+                        <td className="px-4 py-2 text-right">${Number(record.costo_balanceado || 0).toFixed(2)}</td>
+                        <td className="px-4 py-2 text-right">${Number(record.ingreso_leche || 0).toFixed(2)}</td>
+                        <td className={`px-4 py-2 text-right font-semibold ${Number(record.margen_simple || 0) >= 0 ? "text-green-600" : "text-red-500"}`}>
+                          ${Number(record.margen_simple || 0).toFixed(2)}
+                        </td>
+                        <td className="px-4 py-2 text-right font-semibold text-primary">{Number(record.litros_libres || 0).toFixed(1)}L</td>
+                        <td className="px-4 py-2 text-right">
+                          <button type="button" onClick={() => borrarLitrosLibres(record)} className="p-1.5 hover:bg-red-50 rounded-lg text-muted-foreground hover:text-red-600">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </div>

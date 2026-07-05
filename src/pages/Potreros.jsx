@@ -9,7 +9,7 @@ import {
   POTRERO_ROTACIONES_QUERY_KEY,
   potreroRotacionService,
 } from "@/services/potreroRotacionService";
-import { AlertTriangle, ArrowLeft, Edit, Eye, MapPin, Plus, Power, PowerOff } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Edit, Eye, MapPin, Plus, Power, PowerOff, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -208,6 +208,31 @@ export default function Potreros() {
     }
   };
 
+  const handleDeletePotrero = async (potrero) => {
+    const ok = window.confirm(`¿Borrar el potrero "${potrero.nombre}"? También se borrarán sus trabajos y rotaciones.`);
+    if (!ok) return;
+
+    await potreroService.destroy(potrero.id);
+    await queryClient.invalidateQueries({ queryKey: POTREROS_QUERY_KEY });
+    setDetalle(null);
+  };
+
+  const handleDeleteTrabajo = async (trabajo) => {
+    const ok = window.confirm(`¿Borrar el trabajo "${trabajo.tipo}" del ${trabajo.fecha}?`);
+    if (!ok) return;
+
+    await potreroTrabajoService.destroy(trabajo.id);
+    await queryClient.invalidateQueries({ queryKey: POTRERO_TRABAJOS_QUERY_KEY });
+  };
+
+  const handleDeleteRotacion = async (rotacion) => {
+    const ok = window.confirm(`¿Borrar la ocupación iniciada el ${rotacion.fecha_entrada}?`);
+    if (!ok) return;
+
+    await potreroRotacionService.destroy(rotacion.id);
+    await queryClient.invalidateQueries({ queryKey: POTRERO_ROTACIONES_QUERY_KEY });
+  };
+
   const setTrabajo = (field, value) => {
     setTrabajoForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -299,6 +324,10 @@ export default function Potreros() {
           <Button onClick={() => openEdit(detalle)} variant="outline" className="gap-2">
             <Edit className="w-4 h-4" />
             Editar
+          </Button>
+          <Button onClick={() => handleDeletePotrero(detalle)} variant="outline" className="gap-2 text-red-600 hover:text-red-700">
+            <Trash2 className="w-4 h-4" />
+            Borrar
           </Button>
         </div>
 
@@ -449,9 +478,27 @@ export default function Potreros() {
                           <p className="text-xs text-muted-foreground">{trabajo.fecha}</p>
                         </div>
                         {trabajo.costo != null && (
-                          <span className="text-sm font-semibold text-primary">
-                            {trabajo.moneda || "$"} {formatNumber(trabajo.costo)}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-primary">
+                              {trabajo.moneda || "$"} {formatNumber(trabajo.costo)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteTrabajo(trabajo)}
+                              className="p-1 hover:bg-red-50 rounded text-muted-foreground hover:text-red-600"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                        {trabajo.costo == null && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTrabajo(trabajo)}
+                            className="p-1 hover:bg-red-50 rounded text-muted-foreground hover:text-red-600"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         )}
                       </div>
                       {trabajo.tipo === "Siembra" && trabajo.tipo_pasto && (
@@ -547,7 +594,7 @@ export default function Potreros() {
                           <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Rotación</th>
                           <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Animales</th>
                           <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Notas</th>
-                          <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Editar salida</th>
+                          <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -576,6 +623,13 @@ export default function Potreros() {
                                 <Button size="sm" variant="outline" onClick={() => handleGuardarSalidaRotacion(rotacion)}>
                                   Guardar
                                 </Button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteRotacion(rotacion)}
+                                  className="p-1.5 hover:bg-red-50 rounded-lg text-muted-foreground hover:text-red-600"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -748,6 +802,13 @@ export default function Potreros() {
                             className="p-1.5 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors"
                           >
                             {potrero.activo === false ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePotrero(potrero)}
+                            className="p-1.5 hover:bg-red-50 rounded-lg text-muted-foreground hover:text-red-600 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </td>

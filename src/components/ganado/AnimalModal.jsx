@@ -34,6 +34,9 @@ peso_kg: "",
 produccion_am: "",
 produccion_pm: "",
 produccion_diaria_litros: "",
+racion_balanceado_kg: "",
+costo_balanceado_kg: "",
+precio_leche_litro: "",
 racion_actual: "",
 notas: "",
 padre_nombre: "",
@@ -85,6 +88,9 @@ const handleSave = async () => {
         (form.produccion_diaria_litros
           ? Number(form.produccion_diaria_litros)
           : undefined),
+      racion_balanceado_kg: form.racion_balanceado_kg ? Number(form.racion_balanceado_kg) : undefined,
+      costo_balanceado_kg: form.costo_balanceado_kg ? Number(form.costo_balanceado_kg) : undefined,
+      precio_leche_litro: form.precio_leche_litro ? Number(form.precio_leche_litro) : undefined,
     };
       
       let result;
@@ -262,6 +268,20 @@ const handleSave = async () => {
           <div>
             <Label className="text-xs font-semibold mb-1.5 block">Ración actual</Label>
             <Input value={form.racion_actual || ""} onChange={e => set("racion_actual", e.target.value)} placeholder="Ej: Balanceado 5kg + pasto" />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <Label className="text-xs font-semibold mb-1.5 block">Balanceado kg/día</Label>
+              <Input type="number" step="0.1" value={form.racion_balanceado_kg || ""} onChange={e => set("racion_balanceado_kg", e.target.value)} placeholder="5" />
+            </div>
+            <div>
+              <Label className="text-xs font-semibold mb-1.5 block">Costo/kg</Label>
+              <Input type="number" step="0.01" value={form.costo_balanceado_kg || ""} onChange={e => set("costo_balanceado_kg", e.target.value)} placeholder="0.35" />
+            </div>
+            <div>
+              <Label className="text-xs font-semibold mb-1.5 block">Precio leche/L</Label>
+              <Input type="number" step="0.01" value={form.precio_leche_litro || ""} onChange={e => set("precio_leche_litro", e.target.value)} placeholder="0.45" />
+            </div>
           </div>
 
           {/* Reproducción */}

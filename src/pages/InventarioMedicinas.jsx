@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AlertTriangle, Edit, PackagePlus, Pill, Plus, X } from "lucide-react";
+import { AlertTriangle, Edit, PackagePlus, Pill, Plus, Trash2, X } from "lucide-react";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -153,6 +153,14 @@ export default function InventarioMedicinas() {
     }
   };
 
+  const handleDelete = async (item) => {
+    const ok = window.confirm(`¿Borrar "${item.nombre}" del inventario?`);
+    if (!ok) return;
+
+    await inventarioMedicinaService.destroy(item.id);
+    await queryClient.invalidateQueries({ queryKey: INVENTARIO_MEDICINA_QUERY_KEY });
+  };
+
   const activos = inventario.filter((item) => item.activo !== false);
   const stockBajo = activos.filter(isLowStock).length;
   const vencidos = activos.filter(isExpired).length;
@@ -267,6 +275,13 @@ export default function InventarioMedicinas() {
                           className="p-1.5 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors"
                         >
                           <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(item)}
+                          className="p-1.5 hover:bg-red-50 rounded-lg text-muted-foreground hover:text-red-600 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </td>
                     </tr>

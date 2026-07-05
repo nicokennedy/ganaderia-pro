@@ -4,7 +4,7 @@ import { ANIMALS_QUERY_KEY, animalService } from "@/services/animalService";
 import { MILK_RECORDS_QUERY_KEY, milkRecordService } from "@/services/milkRecordService";
 import { formatDate, calcularEdad } from "@/lib/utils";
 import EstadoBadge from "@/components/shared/EstadoBadge";
-import { Search, Plus, Eye, Edit, Milk, AlertTriangle } from "lucide-react";
+import { Search, Plus, Eye, Edit, Milk, AlertTriangle, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import AnimalModal from "@/components/ganado/AnimalModal";
@@ -122,6 +122,15 @@ export default function Ganado() {
       ...animalActualizado,
     }));
 }
+  };
+
+  const handleDeleteAnimal = async (animal) => {
+    const ok = window.confirm(`¿Borrar el animal "${animal.nombre}"? Esta acción no se puede deshacer.`);
+    if (!ok) return;
+
+    await animalService.destroy(animal.id);
+    await queryClient.invalidateQueries({ queryKey: ANIMALS_QUERY_KEY });
+    if (animalDetalle?.id === animal.id) setAnimalDetalle(null);
   };
 
   const filtrados = animales.filter(a => {
@@ -387,6 +396,10 @@ if (animalDetalle) {
                           className="p-1.5 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors">
                           <Edit className="w-4 h-4" />
                         </button>
+                        <button onClick={() => handleDeleteAnimal(animal)}
+                          className="p-1.5 hover:bg-red-50 rounded-lg text-muted-foreground hover:text-red-600 transition-colors">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </td>
                     </tr>
                   );
@@ -420,6 +433,16 @@ if (animalDetalle) {
                     </p>
                   )}
                   {animal.grupo && <p className="text-xs text-muted-foreground mt-1">👥 {animal.grupo}</p>}
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleDeleteAnimal(animal);
+                    }}
+                    className="mt-3 text-xs font-semibold text-red-600"
+                  >
+                    Borrar animal
+                  </button>
                 </div>
               );
             })}
