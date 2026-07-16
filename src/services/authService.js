@@ -24,4 +24,16 @@ export const authService = {
       clearApiToken();
     }
   },
+
+  forgotPassword(email) {
+    return apiClient.post("/api/auth/password/forgot", { email });
+  },
+
+  resetPassword(token, password, passwordConfirmation) {
+    return apiClient.patch("/api/auth/password/reset", {
+      token,
+      password,
+      password_confirmation: passwordConfirmation,
+    });
+  },
 };

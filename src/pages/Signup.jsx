@@ -25,8 +25,8 @@ export default function Signup() {
 
     setLoading(true);
     try {
-      // Rails crea el usuario, su finca y la membresía owner, y devuelve el token
-      // (inicia sesión de inmediato). No hay verificación por OTP.
+      // Rails crea el usuario y vincula cualquier invitación pendiente. Si no
+      // tiene una invitación, el onboarding le permitirá crear su finca.
       await authService.register({
         full_name: fullName,
         email,

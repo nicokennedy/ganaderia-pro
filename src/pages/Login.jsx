@@ -60,6 +60,12 @@ export default function Login() {
             Crear cuenta
           </Link>
         </p>
+
+        <p className="text-center text-sm">
+          <Link to="/forgot-password" className="text-primary font-semibold hover:underline">
+            ¿Olvidaste tu contraseña?
+          </Link>
+        </p>
       </form>
     </div>
   );
